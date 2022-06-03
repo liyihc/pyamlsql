@@ -2,6 +2,17 @@ from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, Literal, Optional, Tuple, Union
 
 import jinja2
+from ruamel.yaml.scalarstring import LiteralScalarString
+
+
+def dict_to_literal(d: Dict[str, str]):
+    return {k: sql_to_literal(v) for k, v in d.items()}
+
+
+def sql_to_literal(sql):
+    if '\n' in sql:
+        return LiteralScalarString(sql)
+    return sql
 
 
 @dataclass
@@ -86,7 +97,7 @@ class SplitSql(Sql):
             sql_id=self.sql_id,
             type=self.type,
             base_id=self.base_id,
-            sql=self.sql,
+            sql=dict_to_literal(self.sql),
             extra=self.extra or "")
 
     @classmethod
@@ -117,27 +128,28 @@ class StrSql(Sql):
         return dict(
             sql_id=self.sql_id,
             type=self.type,
-            sql=self.sql,
-            default=self.default or None,
+            sql=sql_to_literal(self.sql),
+            default=dict_to_literal(self.default) or None,
             extra=self.extra or "")
 
     @classmethod
     def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
-        sql, values = template
-        return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(values)
+        sql, default = template
+        return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(default)
 
     def get_str_sql(self, template):
         return self.template_to_str(self.get_template(template))
 
     def get_template(self, template):
         assert template is None
-        return self.sql, self.default.copy()
+        return self.sql, self.default
 
 
 @dataclass
 class ValueSql(Sql):
     base_id: str
     values: Dict[str, str]
+    default: Dict[str, str] = field(default_factory=dict)
     type: str = "str_value"
     extra: Any = field(default_factory=dict)
 
@@ -146,18 +158,20 @@ class ValueSql(Sql):
             sql_id=self.sql_id,
             type=self.type,
             base_id=self.base_id,
-            values=self.values,
+            values=dict_to_literal(self.values) or None,
+            default=dict_to_literal(self.default) or None,
             extra=self.extra or "")
 
     @classmethod
     def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
-        sql, values = template
-        return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(values)
+        sql, default = template
+        return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(default)
 
     def get_str_sql(self, template: Tuple[str, Dict[str, str]]):
         return self.template_to_str(self.get_template(template))
 
     def get_template(self, template: Tuple[str, Dict[str, str]]):
         assert template
-        template[1].update(self.values)
-        return template
+        t, default = template
+        default.update(self.default)
+        return jinja2.Template(t, undefined=jinja2.DebugUndefined).render(self.values), default

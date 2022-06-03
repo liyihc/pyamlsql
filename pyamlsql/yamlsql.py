@@ -1,8 +1,9 @@
 
 from copy import deepcopy
+from io import StringIO
 from typing import Any, Dict, List, Optional, Tuple, Union, overload
 from pathlib import Path
-import yaml
+from ruamel.yaml import YAML
 
 from .sql_format_parameter import format_parameter
 from .sql import SplitSql, StrSql, Sql, ValueSql
@@ -10,11 +11,12 @@ from .sql import SplitSql, StrSql, Sql, ValueSql
 
 class YamlSql:
     def __init__(self, file_path: Union[str, Path, None] = None) -> None:
+        self.yaml = YAML()
         if file_path:
             p = self.file_path = Path(file_path)
             if p.exists():
                 with p.open('r') as i:
-                    sqls: List[dict] = yaml.load(i, yaml.CLoader)['sqls']
+                    sqls: List[dict] = self.yaml.load(i)['sqls']
                 self.sqls = {s['sql_id']: Sql.from_dict(s) for s in sqls}
             else:
                 self.sqls: Dict[str, Sql] = {}
@@ -56,10 +58,11 @@ class YamlSql:
         self.sqls[sql_id] = str_sql
         self.write()
 
-    def add_str_value(self, sql_id: str, base: str, values: Dict[str, str], **extra):
+    def add_str_value(self, sql_id: str, base: str, values: Dict[str, str], default: Dict[str, str] = None, **extra):
         if sql_id in self.sqls:
             return
-        self.sqls[sql_id] = ValueSql(sql_id, base, values, extra=extra)
+        self.sqls[sql_id] = ValueSql(
+            sql_id, base, values, default or {}, extra=extra)
         self.write()
 
     def to_dict_list(self):
@@ -67,12 +70,13 @@ class YamlSql:
         return [sql.dict() for sql in sqls]
 
     def to_yaml(self):
-        return yaml.dump({"sqls": self.to_dict_list()}, Dumper=yaml.CDumper, sort_keys=False)
+        buf = StringIO()
+        self.yaml.dump({"sqls": self.to_dict_list()}, buf)
+        return buf.getvalue()
 
     def to_yaml_file(self, path):
         with open(path, 'w') as o:
-            yaml.dump({"sqls": self.to_dict_list()},
-                      o, yaml.CDumper, sort_keys=False)
+            self.yaml.dump({"sqls": self.to_dict_list()}, o)
 
     def write(self):
         if self.file_path:
@@ -80,7 +84,7 @@ class YamlSql:
 
     def get_template(self, sql_id: str):
         if sql_id in self.cache_template:
-            return self.cache_template[sql_id]
+            return deepcopy(self.cache_template[sql_id])
         sql = self.sqls[sql_id]
         template: Union[Tuple[str, Dict[str, str]], Dict[str, str], None]
         if isinstance(sql, StrSql):
@@ -108,12 +112,10 @@ class YamlSql:
         sql = self.sqls[sql_id]
         template = self.get_template(sql_id)
         if isinstance(sql, SplitSql):
-            template = template.copy()
             template.update(sql_or_values)
             ret = sql.template_to_str(template)
         else:
             t1, t2 = template
-            t2 = t2.copy()
             t2.update(sql_or_values)
             ret = sql.template_to_str((t1, t2))
         return format_parameter(ret, values or {})

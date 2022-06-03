@@ -1,6 +1,5 @@
 from pyamlsql.sql import Sql
 from pyamlsql.yamlsql import YamlSql
-import yaml
 
 
 def test_yamlsql_to_from_yaml():
@@ -14,11 +13,11 @@ def test_yamlsql_to_from_yaml():
         "str", "SELECT * FROM table UNION SELECT * FROM table 2")
 
     yamltext = ys.to_yaml()
-    assert yamltext == \
+    assert ys.yaml.load(ys.to_yaml()) == ys.yaml.load(
         """sqls:
 - sql_id: split
   type: split
-  base_id: null
+  base_id:
   sql:
     SELECT: '*'
     FROM: table
@@ -29,9 +28,8 @@ def test_yamlsql_to_from_yaml():
   sql: SELECT * FROM table UNION SELECT * FROM table 2
   default: null
   extra: ''
-"""
-
-    sqls = yaml.load(yamltext, yaml.CLoader)['sqls']
+""")
+    sqls = ys.yaml.load(yamltext)['sqls']
     sqls = {s['sql_id']: Sql.from_dict(s) for s in sqls}
     assert ys.sqls == sqls
 
