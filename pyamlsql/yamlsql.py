@@ -1,6 +1,6 @@
 
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Union, overload
+from typing import Any, Dict, List, Optional, Tuple, Union, overload
 from pathlib import Path
 import yaml
 
@@ -82,6 +82,7 @@ class YamlSql:
         if sql_id in self.cache_template:
             return self.cache_template[sql_id]
         sql = self.sqls[sql_id]
+        template: Union[Tuple[str, Dict[str, str]], Dict[str, str], None]
         if isinstance(sql, StrSql):
             template = sql.get_template(None)
         else:
@@ -101,4 +102,18 @@ class YamlSql:
                 ret = sql.get_str_sql(self.get_template(
                     sql.base_id) if sql.base_id else None)
             self.cache_sql[sql_id] = ret
+        return format_parameter(ret, values or {})
+
+    def get_format_with(self, sql_id: str, sql_or_values: Dict[str, str], values: dict = None):
+        sql = self.sqls[sql_id]
+        template = self.get_template(sql_id)
+        if isinstance(sql, SplitSql):
+            template = template.copy()
+            template.update(sql_or_values)
+            ret = sql.template_to_str(template)
+        else:
+            t1, t2 = template
+            t2 = t2.copy()
+            t2.update(sql_or_values)
+            ret = sql.template_to_str((t1, t2))
         return format_parameter(ret, values or {})

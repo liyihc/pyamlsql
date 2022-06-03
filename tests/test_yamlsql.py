@@ -80,3 +80,21 @@ def test_str():
     base = ys.sqls['base']
     assert ys.cache_template["base"] == (base.sql, base.default)
     assert ys.cache_sql["value"] == target
+
+
+def test_split_get_format_with():
+    ys = YamlSql()
+    ys.add_split_sql("base",
+                     """
+    SELECT *
+    FROM test
+    WHERE a = 1
+    """)
+    assert ys.get_format_with(
+        "base", {"WHERE": "b = 3"}) == "SELECT *\nFROM test\nWHERE b = 3"
+
+
+def test_str_get_format_with():
+    ys = YamlSql()
+    ys.add_str_sql("base", "SELECT * FROM {{ table }}")
+    assert ys.get_format_with("base", {"table": "myt"}) == "SELECT * FROM myt"

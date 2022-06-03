@@ -21,6 +21,10 @@ class Sql:
         else:
             raise NotImplementedError()
 
+    @classmethod
+    def template_to_str(self, template):
+        pass
+
     def get_template(self, template=None):
         return ...
 
@@ -85,15 +89,17 @@ class SplitSql(Sql):
             sql=self.sql,
             extra=self.extra or "")
 
+    @classmethod
+    def template_to_str(cls, template: Dict[str, str]):
+        return '\n'.join(f"{k} {v}" for k, v in template.items() if v.strip())
+
     def get_str_sql(self, template: Optional[Dict[str, str]] = None):
-        sql = self.get_template(template)
-        return '\n'.join(f"{k} {v}" for k, v in sql.items() if v.strip())
+        self.template_to_str(self.get_template(template))
 
     def get_template(self, template: Optional[Dict[str, str]] = None):
         if self.base_id and not template:
             raise ValueError()
         if template:
-            template = template.copy()
             template.update(self.sql)
         else:
             template = self.sql
@@ -115,9 +121,13 @@ class StrSql(Sql):
             default=self.default or None,
             extra=self.extra or "")
 
-    def get_str_sql(self, template):
-        sql, values = self.get_template(template)
+    @classmethod
+    def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
+        sql, values = template
         return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(values)
+
+    def get_str_sql(self, template):
+        return self.template_to_str(self.get_template(template))
 
     def get_template(self, template):
         assert template is None
@@ -139,9 +149,15 @@ class ValueSql(Sql):
             values=self.values,
             extra=self.extra or "")
 
-    get_str_sql = StrSql.get_str_sql
+    @classmethod
+    def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
+        sql, values = template
+        return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(values)
 
-    def get_template(self, template: Optional[Tuple[str, Dict[str, str]]] = None):
+    def get_str_sql(self, template: Tuple[str, Dict[str, str]]):
+        return self.template_to_str(self.get_template(template))
+
+    def get_template(self, template: Tuple[str, Dict[str, str]]):
         assert template
         template[1].update(self.values)
         return template
