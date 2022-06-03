@@ -1,5 +1,6 @@
 
-from typing import Dict, List, Optional, Union, overload
+from copy import deepcopy
+from typing import Any, Dict, List, Optional, Union, overload
 from pathlib import Path
 import yaml
 
@@ -20,6 +21,8 @@ class YamlSql:
         else:
             self.file_path = None
             self.sqls: Dict[str, Sql] = {}
+        self.cache_sql: Dict[str, str] = {}
+        self.cache_template: Dict[str, Any] = {}
 
     @overload
     def add_split_sql(self, sql_id: str, sql: str, **extra): ...
@@ -76,16 +79,26 @@ class YamlSql:
             self.to_yaml_file(self.file_path)
 
     def get_template(self, sql_id: str):
+        if sql_id in self.cache_template:
+            return self.cache_template[sql_id]
         sql = self.sqls[sql_id]
         if isinstance(sql, StrSql):
-            return sql.get_template(None)
-        return sql.get_template(self.get_template(sql.base_id) if sql.base_id else None)
+            template = sql.get_template(None)
+        else:
+            template = sql.get_template(
+                self.get_template(sql.base_id) if sql.base_id else None)
+        self.cache_template[sql_id] = deepcopy(template)
+        return template
 
     def get_format(self, sql_id: str, values: dict = None):
-        sql = self.sqls[sql_id]
-        if isinstance(sql, StrSql):
-            ret = sql.get_str_sql(None)
+        if sql_id in self.cache_sql:
+            ret = self.cache_sql[sql_id]
         else:
-            ret = sql.get_str_sql(self.get_template(
-                sql.base_id) if sql.base_id else None)
+            sql = self.sqls[sql_id]
+            if isinstance(sql, StrSql):
+                ret = sql.get_str_sql(None)
+            else:
+                ret = sql.get_str_sql(self.get_template(
+                    sql.base_id) if sql.base_id else None)
+            self.cache_sql[sql_id] = ret
         return format_parameter(ret, values or {})

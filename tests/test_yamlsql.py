@@ -1,4 +1,3 @@
-from re import A
 from pyamlsql.sql import Sql
 from pyamlsql.yamlsql import YamlSql
 import yaml
@@ -60,10 +59,12 @@ def test_split():
         if sql.extra.get('flag', False):
             assert sql.sql_id == "tmp"
 
-    assert ys.get_template("tmp") == {
+    target = {
         "SELECT": "* FROM test",
         "WHERE": "id < 3"
     }
+    assert ys.get_template("tmp") == target
+    assert ys.cache_template["tmp"] == target
 
 
 def test_str():
@@ -71,5 +72,11 @@ def test_str():
     ys.add_str_sql(
         "base", "SELECT * FROM test {{ STATEMENT1 }}", default={"STATEMENT1": "WHERE id == 1"})
     ys.add_str_value("value", "base", {"STATEMENT1": "WHERE id == 2"})
-    assert ys.get_format("base", {}) == "SELECT * FROM test WHERE id == 1"
-    assert ys.get_format("value", {}) == "SELECT * FROM test WHERE id == 2"
+    target = "SELECT * FROM test WHERE id == 1"
+    assert ys.get_format("base", {}) == target
+    assert ys.cache_sql["base"] == target
+    target = "SELECT * FROM test WHERE id == 2"
+    assert ys.get_format("value", {}) == target
+    base = ys.sqls['base']
+    assert ys.cache_template["base"] == (base.sql, base.default)
+    assert ys.cache_sql["value"] == target
