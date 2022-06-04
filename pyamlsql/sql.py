@@ -112,7 +112,7 @@ class SplitSql(Sql):
 
     @classmethod
     def template_to_str(cls, template: Dict[str, str]):
-        return '\n'.join(f"{k} {v}" for k, v in template.items() if v.strip())
+        return '\n'.join(f"{k} {v}" for k, v in template.items() if v and v.strip()) # in case v is None
 
     def get_str_sql(self, template: Optional[Dict[str, str]] = None):
         return self.template_to_str(self.get_template(template))
