@@ -1,6 +1,7 @@
 
 from copy import deepcopy
 from io import StringIO
+from traceback import print_exc
 from typing import Any, Dict, List, Optional, Tuple, Union, overload
 from pathlib import Path
 from ruamel.yaml import YAML
@@ -10,14 +11,19 @@ from .sql import SplitSql, StrSql, Sql, ValueSql
 
 
 class YamlSql:
-    def __init__(self, file_path: Union[str, Path, None] = None) -> None:
+    def __init__(self, file_path: Union[str, Path, None] = None, file_nobase=False) -> None:
         self.yaml = YAML()
         if file_path:
             p = self.file_path = Path(file_path)
+            self.file_nobase = file_nobase
             if p.exists():
-                with p.open('r') as i:
-                    sqls: List[dict] = self.yaml.load(i)['sqls']
-                self.sqls = {s['sql_id']: Sql.from_dict(s) for s in sqls}
+                try:
+                    with p.open('r') as i:
+                        sqls: List[dict] = self.yaml.load(i)['sqls']
+                    self.sqls = {s['sql_id']: Sql.from_dict(s) for s in sqls}
+                except Exception as e:
+                    print_exc()
+                    self.sqls = {}
             else:
                 self.sqls: Dict[str, Sql] = {}
         else:
@@ -65,22 +71,31 @@ class YamlSql:
             sql_id, base, values, default or {}, extra=extra)
         self.write()
 
-    def to_dict_list(self):
+    def to_dict_list(self, no_base=False):
         sqls = sorted(self.sqls.values(), key=lambda sql: sql.sql_id)
-        return [sql.dict() for sql in sqls]
+        ret = []
+        for sql in sqls:
+            if not no_base:
+                ret.append(sql.dict())
+            else:
+                d: dict = sql.from_template(
+                    sql.sql_id, self.get_template(sql.sql_id), sql.extra).dict()
+                d.pop("base_id", None)
+                ret.append(d)
+        return ret
 
-    def to_yaml(self):
+    def to_yaml(self, no_base=False):
         buf = StringIO()
-        self.yaml.dump({"sqls": self.to_dict_list()}, buf)
+        self.yaml.dump({"sqls": self.to_dict_list(no_base=no_base)}, buf)
         return buf.getvalue()
 
-    def to_yaml_file(self, path):
+    def to_yaml_file(self, path, no_base=False):
         with open(path, 'w') as o:
-            self.yaml.dump({"sqls": self.to_dict_list()}, o)
+            self.yaml.dump({"sqls": self.to_dict_list(no_base=no_base)}, o)
 
     def write(self):
         if self.file_path:
-            self.to_yaml_file(self.file_path)
+            self.to_yaml_file(self.file_path, self.file_nobase)
 
     def get_template(self, sql_id: str):
         if sql_id in self.cache_template:

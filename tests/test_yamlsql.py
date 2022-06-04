@@ -12,6 +12,8 @@ def test_yamlsql_to_from_yaml():
     ys.add_str_sql(
         "str", "SELECT * FROM table UNION SELECT * FROM table 2")
 
+    assert ys.get_format("split") == "SELECT *\nFROM table\nWHERE a = 1"
+
     yamltext = ys.to_yaml()
     assert ys.yaml.load(ys.to_yaml()) == ys.yaml.load(
         """sqls:
@@ -22,12 +24,12 @@ def test_yamlsql_to_from_yaml():
     SELECT: '*'
     FROM: table
     WHERE: a = 1
-  extra: ''
+  extra: 
 - sql_id: str
   type: str
   sql: SELECT * FROM table UNION SELECT * FROM table 2
   default: null
-  extra: ''
+  extra: 
 """)
     sqls = ys.yaml.load(yamltext)['sqls']
     sqls = {s['sql_id']: Sql.from_dict(s) for s in sqls}

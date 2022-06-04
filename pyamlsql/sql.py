@@ -10,6 +10,8 @@ def dict_to_literal(d: Dict[str, str]):
 
 
 def sql_to_literal(sql):
+    if not sql:
+        return sql
     if '\n' in sql:
         return LiteralScalarString(sql)
     return sql
@@ -24,11 +26,11 @@ class Sql:
     @staticmethod
     def from_dict(d: Dict[str, Any]):
         if d["type"] == "split":
-            return SplitSql(d["sql_id"], d["base_id"] or None, d["sql"], extra=d["extra"] or {})
+            return SplitSql(d["sql_id"], d.get("base_id", None) or None, d["sql"], extra=d.get("extra", {}) or {})
         elif d["type"] == "str":
-            return StrSql(d["sql_id"], d["sql"], d["default"] or {}, extra=d["extra"] or {})
+            return StrSql(d["sql_id"], d["sql"], d.get("default", {}) or {}, extra=d.get("extra", {}) or {})
         elif d["type"] == "str_value":
-            return ValueSql(d["sql_id"], d["base_id"], d["values"], extra=d["extra"] or {})
+            return ValueSql(d["sql_id"], d.get("base_id", None) or None, d.get("values", {}) or {}, d.get('default', {}) or {}, extra=d.get("extra", {}) or {})
         else:
             raise NotImplementedError()
 
@@ -41,6 +43,10 @@ class Sql:
 
     def get_str_sql(self, template=None):
         pass
+
+    @classmethod
+    def from_template(cls, sql_id: str, template: Any, extra=None):
+        return Sql("no implemented")
 
 
 line_breaks = {
@@ -92,20 +98,24 @@ class SplitSql(Sql):
             d[last] += f"\n{l}"
         return cls(sql_id, base_id, d, extra=extra or {})
 
+    @classmethod
+    def from_template(cls, sql_id: str, template: Dict[str, str], extra=None):
+        return cls(sql_id, "", template, extra=extra or {})
+
     def dict(self):
         return dict(
             sql_id=self.sql_id,
             type=self.type,
             base_id=self.base_id,
             sql=dict_to_literal(self.sql),
-            extra=self.extra or "")
+            extra=self.extra or None)
 
     @classmethod
     def template_to_str(cls, template: Dict[str, str]):
         return '\n'.join(f"{k} {v}" for k, v in template.items() if v.strip())
 
     def get_str_sql(self, template: Optional[Dict[str, str]] = None):
-        self.template_to_str(self.get_template(template))
+        return self.template_to_str(self.get_template(template))
 
     def get_template(self, template: Optional[Dict[str, str]] = None):
         if self.base_id and not template:
@@ -130,7 +140,15 @@ class StrSql(Sql):
             type=self.type,
             sql=sql_to_literal(self.sql),
             default=dict_to_literal(self.default) or None,
-            extra=self.extra or "")
+            extra=self.extra or None)
+
+    @classmethod
+    def from_template(cls, sql_id, template: Tuple[str, Dict[str, str]], extra=None):
+        return cls(
+            sql_id,
+            template[0],
+            template[1],
+            extra=extra or {})
 
     @classmethod
     def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
@@ -160,7 +178,11 @@ class ValueSql(Sql):
             base_id=self.base_id,
             values=dict_to_literal(self.values) or None,
             default=dict_to_literal(self.default) or None,
-            extra=self.extra or "")
+            extra=self.extra or None)
+
+    @classmethod
+    def from_template(cls, sql_id, template: Tuple[str, Dict[str, str]], extra=None):
+        return StrSql.from_template(sql_id, template, extra)
 
     @classmethod
     def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
