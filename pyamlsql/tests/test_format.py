@@ -1,3 +1,4 @@
+import sqlite3
 from pyamlsql.sql_format_parameter import format_parameter
 from datetime import datetime
 
@@ -30,3 +31,17 @@ def test_datetime():
     target = sql.format(dt=f"'{dt}'")
     ret = format_parameter(sql, {"dt": dt})
     assert target == ret
+
+
+def test_multiline():
+    conn = sqlite3.Connection(":memory:")
+    conn.execute("CREATE TABLE tmp(v text)")
+    v = "123'\n\r12332\"\""
+    conn.execute(format_parameter(
+        "INSERT INTO tmp VALUES({v})",
+        {
+            "v": v
+        }
+    ))
+
+    assert conn.execute("SELECT v FROM tmp").fetchone()[0] == v
