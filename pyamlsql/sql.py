@@ -51,17 +51,23 @@ class JoinStatementElement(BaseModel):
 
 
 class JoinStatement(BaseModel):
+    base: str
     joiner: str = ""
     elements: List[JoinStatementElement]
 
     @classmethod
-    def from_statements(self, joiner: str, elements: Dict[str, Union[str, JoinStatementElement]]):
+    def from_statements(self, base: str, joiner: str, elements: Dict[str, Union[str, JoinStatementElement]]):
         return JoinStatement(
+            base=base,
             joiner=joiner,
             elements=[JoinStatementElement(condition=k, text=v) for k, v in elements.items()])
 
     def get_template(self, conditions: Set[str]):
-        return f" {self.joiner} ".join(t for e in self.elements if (t := e.get_template(conditions)))
+        inner = f" {self.joiner} ".join(
+            t for e in self.elements if (t := e.get_template(conditions)))
+        if inner:
+            return f"{self.base} {inner}" if self.base else inner
+        return ""
 
 
 JoinStatementElement.update_forward_refs(**locals())
@@ -103,9 +109,10 @@ class SQL(BaseModel):
         return ret
 
 
-def OR(statements: Dict[str, Union[str, JoinStatement]]):  # TODO: wrap with ()
-    return JoinStatement.from_statements("OR", statements)
+# TODO: wrap with ()
+def OR(base: str, statements: Dict[str, Union[str, JoinStatement]]):
+    return JoinStatement.from_statements(base, "OR", statements)
 
 
-def AND(statements: Dict[str, Union[str, JoinStatement]]):
-    return JoinStatement.from_statements("AND", statements)
+def AND(base: str, statements: Dict[str, Union[str, JoinStatement]]):
+    return JoinStatement.from_statements(base, "AND", statements)

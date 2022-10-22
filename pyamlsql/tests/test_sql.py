@@ -9,10 +9,10 @@ def test_recursive():
         sql="""
             SELECT *
             FROM t1
-            WHERE {{ CONDITION }}
+            {{ CONDITION }}
         """,
         statements={
-            "CONDITION": OR({
+            "CONDITION": OR("WHERE", {
                 "condition1": "v = 1",
                 "condition2": "v = 2"
             })
@@ -27,22 +27,24 @@ def test_recursive():
 
 
 def test_deep_recursive():
-    s = OR(
-        {
-            "a": "a = 1",
-            "b": "b = 1",
-            "c": AND(
-                {
-                    "d": "d = 1",
-                    "e": "e = 1"
-                }
-            )
-        }
-    )
+    s = OR("WHERE",
+           {
+               "a": "a = 1",
+               "b": "b = 1",
+               "c": AND("",
+                        {
+                            "d": "d = 1",
+                            "e": "e = 1"
+                        }
+                        )
+           }
+           )
 
     assert s.get_template({"a", "c", "d", "e"}
-                          ) == "a = 1 OR d = 1 AND e = 1"
+                          ) == "WHERE a = 1 OR d = 1 AND e = 1"
+    assert s.get_template({}) == ""
     text = """
+base: WHERE
 joiner: OR
 elements:
   - condition: a
@@ -51,6 +53,7 @@ elements:
     text: b = 1
   - condition: c
     text:
+      base: ""
       joiner: AND
       elements:
         - condition: d
