@@ -1,199 +1,111 @@
-from dataclasses import dataclass, asdict, field
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import jinja2
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-
-def dict_to_literal(d: Dict[str, str]):
-    return {k: sql_to_literal(v) for k, v in d.items()}
+Condition = Union[Dict[str, bool], None]
 
 
-def sql_to_literal(sql):
-    if not sql:
-        return sql
-    if '\n' in sql:
-        return LiteralScalarString(sql)
-    return sql
+def to_literal(d: Union[str, dict, list]):
+    if isinstance(d, str):
+        if not d or '\n' not in d:
+            return d
+        return LiteralScalarString(d)
+    if isinstance(d, Mapping):
+        return {k: vv for k, v in d.items() if (vv := to_literal(v))}
+    if isinstance(d, Sequence):
+        return list(map(to_literal, d))
 
 
-@dataclass
-class Sql:
+"""
+sql_id: 123
+sql: {{ STATE1 }}
+statements:
+  STATE1:
+    joiner: OR
+    elements:
+      - condition: condition1
+        text: v = 1
+      - text: w = 2
+      - text:
+          joiner: AND
+          elements:
+            - condition: condition3
+              value: u = 4
+            - condition: condition4
+              value: c = 5
+"""
+
+
+class JoinStatementElement(BaseModel):
+    condition: Union[str, None] = None
+    text: Union[str, "JoinStatement"]
+
+    def get_template(self, conditions: Set[str]):
+        if self.condition is not None and self.condition not in conditions:
+            return None
+        if isinstance(self.text, str):
+            return self.text
+        return self.text.get_template(conditions)
+
+
+class JoinStatement(BaseModel):
+    joiner: str = ""
+    elements: List[JoinStatementElement]
+
+    @classmethod
+    def from_statements(self, joiner: str, elements: Dict[str, Union[str, JoinStatementElement]]):
+        return JoinStatement(
+            joiner=joiner,
+            elements=[JoinStatementElement(condition=k, text=v) for k, v in elements.items()])
+
+    def get_template(self, conditions: Set[str]):
+        return f" {self.joiner} ".join(t for e in self.elements if (t := e.get_template(conditions)))
+
+
+JoinStatementElement.update_forward_refs(**locals())
+
+
+class HashSet(set):
+    def __hash__(self):
+        h = len(self)
+        for item in self:
+            h ^= hash(item)
+        return h
+
+
+class SQL(BaseModel):
     sql_id: str
-
-    dict = asdict
-
-    @staticmethod
-    def from_dict(d: Dict[str, Any]):
-        if d["type"] == "split":
-            return SplitSql(d["sql_id"], d.get("base_id", None) or None, d["sql"], extra=d.get("extra", {}) or {})
-        elif d["type"] == "str":
-            return StrSql(d["sql_id"], d["sql"], d.get("default", {}) or {}, extra=d.get("extra", {}) or {})
-        elif d["type"] == "str_value":
-            return ValueSql(d["sql_id"], d.get("base_id", None) or None, d.get("values", {}) or {}, d.get('default', {}) or {}, extra=d.get("extra", {}) or {})
-        else:
-            raise NotImplementedError()
-
-    @classmethod
-    def template_to_str(self, template):
-        pass
-
-    def get_template(self, template=None):
-        return ...
-
-    def get_str_sql(self, template=None):
-        pass
-
-    @classmethod
-    def from_template(cls, sql_id: str, template: Any, extra=None):
-        return Sql("no implemented")
-
-
-line_breaks = {
-    "INSERT",
-    "VALUES",
-    "UPDATE",
-    "SET",
-    "SELECT",
-    "REPLACE INTO",
-    "FROM",
-    "GROUP BY",
-    "ORDER BY",
-    "WHERE",
-    "LIMIT"
-}
-
-
-@dataclass
-class SplitSql(Sql):
-    base_id: Optional[str]
-    sql: Dict[str, str]
-    type: str = "split"
-    extra: Any = field(default_factory=dict)
-
-    @classmethod
-    def from_sql(cls, sql_id: str, sql: str, base_id: Optional[str] = None, extra=None):
-        lines = sql.splitlines()
-        d = {}
-        last: str = None
-        for l in lines:
-            if not l.strip():
-                if last is not None:
-                    d[last] += f"\n"
-                continue
-            words = l.split(maxsplit=1)
-            lb = words[0]
-            if lb in line_breaks:
-                d[lb] = words[1] if len(words) > 1 else ""
-                last = lb
-                continue
-
-            words = l.split(maxsplit=2)
-            if len(words) >= 2:
-                lb = ' '.join(words[:2])
-                if lb in line_breaks:
-                    d[lb] = words[2] if len(words) > 2 else ""
-                    last = lb
-                    continue
-            d[last] += f"\n{l}"
-        return cls(sql_id, base_id, d, extra=extra or {})
-
-    @classmethod
-    def from_template(cls, sql_id: str, template: Dict[str, str], extra=None):
-        return cls(sql_id, "", template, extra=extra or {})
-
-    def dict(self):
-        return dict(
-            sql_id=self.sql_id,
-            type=self.type,
-            base_id=self.base_id,
-            sql=dict_to_literal(self.sql),
-            extra=self.extra or None)
-
-    @classmethod
-    def template_to_str(cls, template: Dict[str, str]):
-        return '\n'.join(f"{k} {v}" for k, v in template.items() if v and v.strip()) # in case v is None
-
-    def get_str_sql(self, template: Optional[Dict[str, str]] = None):
-        return self.template_to_str(self.get_template(template))
-
-    def get_template(self, template: Optional[Dict[str, str]] = None):
-        if self.base_id and not template:
-            raise ValueError()
-        if template:
-            template.update(self.sql)
-        else:
-            template = self.sql
-        return template
-
-
-@dataclass
-class StrSql(Sql):
     sql: str
-    default: Dict[str, str]
-    type: str = "str"
-    extra: Any = field(default_factory=dict)
-
-    def dict(self):
-        return dict(
-            sql_id=self.sql_id,
-            type=self.type,
-            sql=sql_to_literal(self.sql),
-            default=dict_to_literal(self.default) or None,
-            extra=self.extra or None)
+    statements: Union[Dict[str, Union[str, JoinStatement]], None] = None
+    cache: Dict[HashSet, str] = {}
 
     @classmethod
-    def from_template(cls, sql_id, template: Tuple[str, Dict[str, str]], extra=None):
-        return cls(
-            sql_id,
-            template[0],
-            template[1],
-            extra=extra or {})
+    def from_dict(cls, d: dict):
+        return cls(**d)
 
-    @classmethod
-    def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
-        sql, default = template
-        return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(default)
+    def to_yaml_dict(self):
+        return to_literal(self.dict())
 
-    def get_str_sql(self, template):
-        return self.template_to_str(self.get_template(template))
+    def get_template(self, conditions: Dict[str, bool]) -> str:
+        condition_set = HashSet(k for k, v in conditions.items() if v)
+        if condition_set in self.cache:
+            return self.cache[condition_set]
+        if self.statements:
+            statements = {k: v if isinstance(v, str) else v.get_template(condition_set)
+                          for k, v in self.statements.items()}
+        else:
+            statements = {}
+        ret = jinja2.Template(
+            self.sql, undefined=jinja2.StrictUndefined).render(statements)
+        self.cache[condition_set] = ret
+        return ret
 
-    def get_template(self, template):
-        assert template is None
-        return self.sql, self.default
+
+def OR(statements: Dict[str, Union[str, JoinStatement]]):  # TODO: wrap with ()
+    return JoinStatement.from_statements("OR", statements)
 
 
-@dataclass
-class ValueSql(Sql):
-    base_id: str
-    values: Dict[str, str]
-    default: Dict[str, str] = field(default_factory=dict)
-    type: str = "str_value"
-    extra: Any = field(default_factory=dict)
-
-    def dict(self):
-        return dict(
-            sql_id=self.sql_id,
-            type=self.type,
-            base_id=self.base_id,
-            values=dict_to_literal(self.values) or None,
-            default=dict_to_literal(self.default) or None,
-            extra=self.extra or None)
-
-    @classmethod
-    def from_template(cls, sql_id, template: Tuple[str, Dict[str, str]], extra=None):
-        return StrSql.from_template(sql_id, template, extra)
-
-    @classmethod
-    def template_to_str(cls, template: Tuple[str, Dict[str, str]]):
-        sql, default = template
-        return jinja2.Template(sql, undefined=jinja2.StrictUndefined).render(default)
-
-    def get_str_sql(self, template: Tuple[str, Dict[str, str]]):
-        return self.template_to_str(self.get_template(template))
-
-    def get_template(self, template: Tuple[str, Dict[str, str]]):
-        assert template
-        t, default = template
-        default.update(self.default)
-        return jinja2.Template(t, undefined=jinja2.DebugUndefined).render(self.values), default
+def AND(statements: Dict[str, Union[str, JoinStatement]]):
+    return JoinStatement.from_statements("AND", statements)
