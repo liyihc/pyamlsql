@@ -1,5 +1,5 @@
 from io import StringIO
-from ..sql import SQL, OR, AND, IF
+from ..sql import SQL, OR, AND, IF, SWITCH
 from ruamel import yaml
 
 
@@ -92,3 +92,16 @@ false_text:
   false_text: ''
     """
     assert s.dict() == yaml.safe_load(text)
+
+
+def test_switch():
+    s = SWITCH(
+        {
+            "a": "a",
+            "b": "b"
+        },
+        "c"
+    )
+    assert s.get_template({"a", "b"}) == "a"
+    assert s.get_template({"b"}) == "b"
+    assert s.get_template({}) == "c"

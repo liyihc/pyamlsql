@@ -7,7 +7,7 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 from .sql_format_parameter import format_parameter
-from .sql import JoinStatement, SQL
+from .sql import SQL, StatementTypes
 
 
 class YamlSql:
@@ -29,13 +29,14 @@ class YamlSql:
             self.file_path = None
             self.sqls: Dict[str, SQL] = {}
 
-    def add_sql(self, sql_id: str, sql: str, statements: Optional[Dict[str, Union[str, JoinStatement]]] = None):
+    def add_sql(self, sql_id: str, sql: str, statements: Optional[Dict[str, StatementTypes]] = {}, **extra):
         if sql_id in self.sqls:
             return
         self.sqls[sql_id] = SQL(
             sql_id=sql_id,
             sql=sql,
-            statements=statements
+            statements=statements,
+            extra=extra
         )
 
     def to_dict_list(self):

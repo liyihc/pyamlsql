@@ -37,10 +37,12 @@ statements:
               value: c = 5
 """
 
+StatementTypes = Union[str, "JoinStatement", "IfStatement", "SwitchStatement"]
+
 
 class JoinStatementElement(BaseModel):
     condition: Union[str, None] = None
-    text: Union[str, "JoinStatement", "IfStatement"]
+    text: StatementTypes
 
     def get_template(self, conditions: Set[str]):
         if self.condition is not None and self.condition not in conditions:
@@ -56,7 +58,7 @@ class JoinStatement(BaseModel):
     elements: List[JoinStatementElement]
 
     @classmethod
-    def from_statements(self, base: str, joiner: str, elements: Dict[str, Union[str, "JoinStatement", "IfStatement"]]):
+    def from_statements(self, base: str, joiner: str, elements: Dict[str, StatementTypes]):
         return JoinStatement(
             base=base,
             joiner=joiner,
@@ -72,8 +74,8 @@ class JoinStatement(BaseModel):
 
 class IfStatement(BaseModel):
     condition: str
-    true_text: Union[str, JoinStatement, "IfStatement"]
-    false_text: Union[str, JoinStatement, "IfStatement"] = ""
+    true_text: StatementTypes
+    false_text: StatementTypes = ""
 
     def get_template(self, conditions: Set[str]):
         if self.condition in conditions:
@@ -86,8 +88,19 @@ class IfStatement(BaseModel):
         return self.false_text.get_template(conditions)
 
 
-JoinStatementElement.update_forward_refs(**locals())
-IfStatement.update_forward_refs(**locals())
+class SwitchStatement(BaseModel):
+    cond_statements: Dict[str, StatementTypes]
+    default: StatementTypes = ""
+
+    def get_template(self, conditions: Set[str]):
+        for condition, statement in self.cond_statements.items():
+            if condition in conditions:
+                if isinstance(statement, str):
+                    return statement
+                return statement.get_template(conditions)
+        if isinstance(self.default, str):
+            return self.default
+        return self.default.get_template(conditions)
 
 
 class HashSet(set):
@@ -101,8 +114,7 @@ class HashSet(set):
 class SQL(BaseModel):
     sql_id: str
     sql: str
-    statements: Union[Dict[str, Union[str,
-                                      JoinStatement, IfStatement]], None] = None
+    statements: Dict[str, StatementTypes] = {}
     extra: Dict[str, str] = {}
     cache: Dict[HashSet, str] = {}
 
@@ -128,14 +140,24 @@ class SQL(BaseModel):
         return ret
 
 
+JoinStatementElement.update_forward_refs(**locals())
+IfStatement.update_forward_refs(**locals())
+SwitchStatement.update_forward_refs(**locals())
+SQL.update_forward_refs(**locals())
+
+
 # TODO: wrap with ()
-def OR(base: str, statements: Dict[str, Union[str, JoinStatement, IfStatement]]):
+def OR(base: str, statements: Dict[str, StatementTypes]):
     return JoinStatement.from_statements(base, "OR", statements)
 
 
-def AND(base: str, statements: Dict[str, Union[str, JoinStatement, IfStatement]]):
+def AND(base: str, statements: Dict[str, StatementTypes]):
     return JoinStatement.from_statements(base, "AND", statements)
 
 
-def IF(condition: str, true_text: Union[str, JoinStatement, IfStatement], false_text: Union[str, JoinStatement, IfStatement] = ""):
+def IF(condition: str, true_text: StatementTypes, false_text: StatementTypes = ""):
     return IfStatement(condition=condition, true_text=true_text, false_text=false_text)
+
+
+def SWITCH(statements: Dict[str, StatementTypes], default: StatementTypes = ""):
+    return SwitchStatement(cond_statements=statements, default=default)

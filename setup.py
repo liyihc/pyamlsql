@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 # 其实就是entrypoint，在哪里定义都行
 setup(
     name="pyamlsql",
-    version="0.0.7",
+    version="0.1.0",
     description="",
     packages=find_packages(),
     python_requires=">=3.6, <4",
