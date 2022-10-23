@@ -1,9 +1,9 @@
 from io import StringIO
-from ..sql import SQL, OR, AND
+from ..sql import SQL, OR, AND, IF
 from ruamel import yaml
 
 
-def test_recursive():
+def test_join():
     ys = SQL(
         sql_id="1",
         sql="""
@@ -26,7 +26,7 @@ def test_recursive():
         """
 
 
-def test_deep_recursive():
+def test_join_recursive():
     s = OR("WHERE",
            {
                "a": "a = 1",
@@ -60,5 +60,35 @@ elements:
           text: d = 1
         - condition: e
           text: e = 1
+    """
+    assert s.dict() == yaml.safe_load(text)
+
+
+def test_if():
+    s = IF("a", "a > 1", "a < 1")
+    assert s.get_template({"a"}) == "a > 1"
+    assert s.get_template({}) == "a < 1"
+
+
+def test_if_recursive():
+    s = IF("a", AND("WHERE", {"a": "a > 1"}), OR("WHERE", {"b": "b > 1"}))
+    assert s.get_template({"a"}) == "WHERE a > 1"
+    assert s.get_template({"b"}) == "WHERE b > 1"
+
+    s = IF("a", IF("b", "a = b", "a = 1"), IF("b", "b = 1"))
+    assert s.get_template({"a", "b"}) == "a = b"
+    assert s.get_template({"a"}) == "a = 1"
+    assert s.get_template({"b"}) == "b = 1"
+    assert s.get_template({}) == ""
+    text = """
+condition: a
+true_text:
+  condition: b
+  true_text: a = b
+  false_text: a = 1
+false_text:
+  condition: b
+  true_text: b = 1
+  false_text: ''
     """
     assert s.dict() == yaml.safe_load(text)

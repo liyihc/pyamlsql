@@ -40,7 +40,7 @@ statements:
 
 class JoinStatementElement(BaseModel):
     condition: Union[str, None] = None
-    text: Union[str, "JoinStatement"]
+    text: Union[str, "JoinStatement", "IfStatement"]
 
     def get_template(self, conditions: Set[str]):
         if self.condition is not None and self.condition not in conditions:
@@ -56,7 +56,7 @@ class JoinStatement(BaseModel):
     elements: List[JoinStatementElement]
 
     @classmethod
-    def from_statements(self, base: str, joiner: str, elements: Dict[str, Union[str, JoinStatementElement]]):
+    def from_statements(self, base: str, joiner: str, elements: Dict[str, Union[str, "JoinStatement", "IfStatement"]]):
         return JoinStatement(
             base=base,
             joiner=joiner,
@@ -70,7 +70,24 @@ class JoinStatement(BaseModel):
         return ""
 
 
+class IfStatement(BaseModel):
+    condition: str
+    true_text: Union[str, JoinStatement, "IfStatement"]
+    false_text: Union[str, JoinStatement, "IfStatement"] = ""
+
+    def get_template(self, conditions: Set[str]):
+        if self.condition in conditions:
+            if isinstance(self.true_text, str):
+                return self.true_text
+            else:
+                return self.true_text.get_template(conditions)
+        if isinstance(self.false_text, str):
+            return self.false_text
+        return self.false_text.get_template(conditions)
+
+
 JoinStatementElement.update_forward_refs(**locals())
+IfStatement.update_forward_refs(**locals())
 
 
 class HashSet(set):
@@ -84,7 +101,9 @@ class HashSet(set):
 class SQL(BaseModel):
     sql_id: str
     sql: str
-    statements: Union[Dict[str, Union[str, JoinStatement]], None] = None
+    statements: Union[Dict[str, Union[str,
+                                      JoinStatement, IfStatement]], None] = None
+    extra: Dict[str, str] = {}
     cache: Dict[HashSet, str] = {}
 
     @classmethod
@@ -110,9 +129,13 @@ class SQL(BaseModel):
 
 
 # TODO: wrap with ()
-def OR(base: str, statements: Dict[str, Union[str, JoinStatement]]):
+def OR(base: str, statements: Dict[str, Union[str, JoinStatement, IfStatement]]):
     return JoinStatement.from_statements(base, "OR", statements)
 
 
-def AND(base: str, statements: Dict[str, Union[str, JoinStatement]]):
+def AND(base: str, statements: Dict[str, Union[str, JoinStatement, IfStatement]]):
     return JoinStatement.from_statements(base, "AND", statements)
+
+
+def IF(condition: str, true_text: Union[str, JoinStatement, IfStatement], false_text: Union[str, JoinStatement, IfStatement] = ""):
+    return IfStatement(condition=condition, true_text=true_text, false_text=false_text)
