@@ -38,6 +38,7 @@ class YamlSql:
             statements=statements,
             extra=extra
         )
+        self.write()
 
     def to_dict_list(self):
         sqls = sorted(self.sqls.values(), key=lambda sql: sql.sql_id)
@@ -59,6 +60,6 @@ class YamlSql:
         if self.file_path:
             self.to_yaml_file(self.file_path)
 
-    def get_format(self, sql_id: str, values: dict = None, conditions: dict = None):
+    def get_format(self, sql_id: str, values: Optional[dict] = None, conditions: Optional[dict] = None):
         sql = self.sqls[sql_id]
         return format_parameter(sql.get_template(conditions or {}), values or {})
