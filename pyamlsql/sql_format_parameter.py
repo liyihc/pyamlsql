@@ -20,6 +20,7 @@ def fp(param):
 
 
 def format_parameter(sql: str, params: dict):
+    params = params.copy()
     for k, v in params.items():
         if isinstance(v, Iterable) and not isinstance(v, (bytes, str)):
             v = ','.join(map(fp, v))

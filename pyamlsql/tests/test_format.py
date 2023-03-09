@@ -32,6 +32,12 @@ def test_datetime():
     ret = format_parameter(sql, {"dt": dt})
     assert target == ret
 
+    d = dt.date()
+    target = sql.format(dt=f"'{d}'")
+    ret = format_parameter(sql, {"dt": d})
+    assert target == ret
+    
+
 
 def test_multiline():
     conn = sqlite3.Connection(":memory:")
